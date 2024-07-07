@@ -1,0 +1,75 @@
+---
+- name: Installation of Openshift platform
+  hosts: localhost
+  gather_facts: no
+  connection: local
+  vars_files:
+    - main.yaml
+  tasks:
+
+    # - name: create DNS files
+    #   # create DNS and Reverse DNS files
+    #   template:
+    #     src: dns.j2
+    #     dest: "{{ cluster_name }}.db"
+
+    # - name: create reverse dns file
+    #   template:
+    #     src: dns-r.j2
+    #     dest: "{{ cluster_name }}-r.db"
+
+    - name: Install haproxy
+      yum:
+        name: "{{ item }}"
+        state: latest
+      loop: "{{ packages }}"
+
+    - name: changing haproxy config file
+      template:
+        src: haproxy.cfg.j2
+        dest: /etc/haproxy/haproxy.cfg
+
+    - name: start and enable haproxy
+      service:
+        name: haproxy
+        state: started
+        enabled: true
+
+    - name: Download oc binaries and openshift-install
+      get_url:
+        url: "https://mirror.openshift.com/pub/openshift-v4/{{ arch }}/clients/ocp/{{ version }}/{{ item }}-{{ version }}.tar.gz"
+        dest: "{{ playbook_dir }}"
+      loop: "{{ binaries }}"
+
+    - name: Extracting downloaded oc binaries and openshift-install tra files
+      ansible.builtin.unarchive:
+        src: "{{ playbook_dir }}/{{ item }}-{{ version }}.tar.gz"
+        dest: /usr/local/bin
+      loop: "{{ binaries }}"
+
+    #- name: Download live ISO
+      # from mirror.openshift.com
+      # - https://mirror.openshift.com/pub/openshift-v4/dependencies/rhcos/4.12/4.12.30/rhcos-4.12.30-x86_64-live.x86_64.iso
+      # upload to datastore
+
+    - name: add ssh key to variables file
+      shell: "cat {{ ssh_key_path }}"
+      register: ssh_key
+
+    - name: generate install configs
+      template:
+        src: install-config.j2
+        dest: install-config.yaml
+
+    - name: create backup of Install config
+      copy:
+        src: install-config.yaml
+        dest: install-config.yaml.bkp
+
+    - name: generate manifets
+      shell: openshift-install create manifests
+
+    - name: generate ignition configs
+      shell: openshift-install create ignition-configs
+
+    # create vm install ESXI using live os and set ip address
